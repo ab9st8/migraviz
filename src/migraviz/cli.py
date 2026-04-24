@@ -17,13 +17,23 @@ from migraviz.translator import metadata_to_dbml
 @click.command()
 @click.argument(
     "alembic_ini",
+    required=False,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--db-url",
+    default=None,
+    help=(
+        "Connect to an existing database instead of spinning up an ephemeral one. "
+        "Skips migrations entirely — just introspects and outputs DBML. "
+        "Mutually exclusive with ALEMBIC_INI."
+    ),
 )
 @click.option(
     "-r",
     "--revision",
     default="head",
-    help="Target Alembic revision (default: head).",
+    help="Target Alembic revision (default: head). Only used in ephemeral mode.",
 )
 @click.option(
     "-o",
@@ -40,7 +50,8 @@ from migraviz.translator import metadata_to_dbml
     default=("alembic",),
     help=(
         "Alembic ini section(s) to run. Repeat for multi-schema setups, "
-        "e.g. -s alembic:shared -s alembic:tenant. Defaults to 'alembic'."
+        "e.g. -s alembic:shared -s alembic:tenant. Defaults to 'alembic'. "
+        "Only used in ephemeral mode."
     ),
 )
 @click.option(
@@ -59,11 +70,13 @@ from migraviz.translator import metadata_to_dbml
     multiple=True,
     help=(
         "Extra -x arguments passed to alembic, in the form section:key=value. "
-        "e.g. -x alembic:tenant:schema_name=tenant_migraviz"
+        "e.g. -x alembic:tenant:schema_name=tenant_migraviz. "
+        "Only used in ephemeral mode."
     ),
 )
 def main(
-    alembic_ini: Path,
+    alembic_ini: Path | None,
+    db_url: str | None,
     revision: str,
     output: Path | None,
     sections: tuple[str, ...],
@@ -72,26 +85,75 @@ def main(
 ) -> None:
     """Generate a DBML schema from Alembic migrations.
 
-    ALEMBIC_INI is the path to your project's alembic.ini file.
+    Two modes of operation:
+
+    \b
+    Ephemeral mode (default):
+      migraviz ./alembic.ini [-r revision]
+      Spins up a temporary Postgres, runs migrations, introspects, outputs DBML.
+
+    \b
+    External DB mode:
+      migraviz --db-url postgresql://user:pass@host:port/db [--schema ...]
+      Connects to an existing database, introspects, outputs DBML.
+      No migrations are run — the database should already be in the desired state.
     """
+    if db_url and alembic_ini:
+        click.echo("Cannot use both --db-url and ALEMBIC_INI.", err=True)
+        sys.exit(1)
+
+    if not db_url and not alembic_ini:
+        click.echo("Provide either ALEMBIC_INI or --db-url.", err=True)
+        sys.exit(1)
+
+    if db_url:
+        metadata = _introspect_external(db_url, schemas)
+    else:
+        assert alembic_ini is not None
+        metadata = _run_ephemeral(alembic_ini, revision, sections, schemas, x_args)
+
+    if not metadata.tables:
+        click.echo("No tables found.", err=True)
+        sys.exit(1)
+
+    dbml = metadata_to_dbml(metadata)
+
+    if output:
+        output.write_text(dbml)
+        click.echo(f"Written to {output}", err=True)
+    else:
+        click.echo(dbml)
+
+
+def _introspect_external(db_url, schemas):
+    """External DB mode: just connect and reflect."""
+    click.echo("Introspecting schema...", err=True)
+    return introspect_schema(
+        db_url, schemas=list(schemas) if schemas else None,
+    )
+
+
+def _run_ephemeral(alembic_ini, revision, sections, schemas, x_args):
+    """Ephemeral mode: spin up postgres, migrate, introspect."""
     # Parse -x args into per-section buckets: {section: [key=value, ...]}
     section_x_args: dict[str, list[str]] = {}
     for x_arg in x_args:
-        # format: section:key=value
         parts = x_arg.split(":", maxsplit=2)
         if len(parts) == 3:
-            sec = f"{parts[0]}:{parts[1]}"  # e.g. "alembic:tenant"
+            sec = f"{parts[0]}:{parts[1]}"
             section_x_args.setdefault(sec, []).append(parts[2])
         else:
-            click.echo(f"Invalid -x format: {x_arg!r} (expected section:key=value)", err=True)
+            click.echo(
+                f"Invalid -x format: {x_arg!r} (expected section:key=value)",
+                err=True,
+            )
             sys.exit(1)
 
     click.echo("Spinning up ephemeral Postgres...", err=True)
 
-    with ephemeral_pg() as db_url:
-        # Create any requested schemas before running migrations
+    with ephemeral_pg() as url:
         if schemas:
-            engine = create_engine(db_url)
+            engine = create_engine(url)
             with engine.connect() as conn:
                 for schema in schemas:
                     conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
@@ -102,7 +164,7 @@ def main(
             click.echo(f"Running migrations [{section}] to '{revision}'...", err=True)
             run_migrations(
                 alembic_ini,
-                db_url,
+                url,
                 revision=revision,
                 section=section,
                 x_args=section_x_args.get(section),
@@ -110,17 +172,7 @@ def main(
 
         click.echo("Introspecting schema...", err=True)
         metadata = introspect_schema(
-            db_url, schemas=list(schemas) if schemas else None,
+            url, schemas=list(schemas) if schemas else None,
         )
 
-    if not metadata.tables:
-        click.echo("No tables found after migration.", err=True)
-        sys.exit(1)
-
-    dbml = metadata_to_dbml(metadata)
-
-    if output:
-        output.write_text(dbml)
-        click.echo(f"Written to {output}", err=True)
-    else:
-        click.echo(dbml)
+    return metadata
