@@ -14,6 +14,12 @@ def introspect_schema(db_url: str, schemas: list[str] | None = None) -> MetaData
     schemas: list of postgres schema names to reflect (e.g. ['shared', 'tenant_migraviz']).
              If None, reflects the default (public) schema only.
     """
+    # Normalize common postgres URL schemes to what SQLAlchemy expects
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
     engine = create_engine(db_url)
     metadata = MetaData()
 
