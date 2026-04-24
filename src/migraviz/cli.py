@@ -51,6 +51,12 @@ from migraviz.translator import metadata_to_dbml
     help="Output format (default: dbml). Image formats require graphviz.",
 )
 @click.option(
+    "--dark",
+    is_flag=True,
+    default=False,
+    help="Use dark color scheme for image output.",
+)
+@click.option(
     "-s",
     "--section",
     "sections",
@@ -89,6 +95,7 @@ def main(
     revision: str,
     output: Path | None,
     fmt: str,
+    dark: bool,
     sections: tuple[str, ...],
     schemas: tuple[str, ...],
     x_args: tuple[str, ...],
@@ -140,7 +147,7 @@ def main(
 
         assert output is not None
         try:
-            rendered = render_diagram(metadata, output, fmt=fmt)
+            rendered = render_diagram(metadata, output, fmt=fmt, dark=dark)
             click.echo(f"Rendered to {rendered}", err=True)
         except ImportError as e:
             click.echo(str(e), err=True)

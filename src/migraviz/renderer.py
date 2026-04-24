@@ -21,11 +21,18 @@ def _format_type(sa_type) -> str:
         return type(sa_type).__name__
 
 
-def _table_label(table) -> str:
+def _table_label(
+    table,
+    *,
+    text_color: str = "#1a1a1a",
+    type_color: str = "#888888",
+    border_color: str = "#cccccc",
+    header_bg: str = "#4a86c8",
+) -> str:
     """Build an HTML-like label for a graphviz record node."""
     # Header row with table name
     header = (
-        f'<TR><TD COLSPAN="3" BGCOLOR="#4a86c8">'
+        f'<TR><TD COLSPAN="3" BGCOLOR="{header_bg}">'
         f'<FONT COLOR="white"><B>{_full_name(table)}</B></FONT>'
         f"</TD></TR>"
     )
@@ -45,18 +52,22 @@ def _table_label(table) -> str:
 
         rows.append(
             f"<TR>"
-            f'<TD ALIGN="LEFT" PORT="{col.name}">{col.name}{nullable}</TD>'
-            f'<TD ALIGN="LEFT"><FONT COLOR="#888888">{col_type}</FONT></TD>'
+            f'<TD ALIGN="LEFT" PORT="{col.name}"><FONT COLOR="{text_color}">{col.name}{nullable}</FONT></TD>'
+            f'<TD ALIGN="LEFT"><FONT COLOR="{type_color}">{col_type}</FONT></TD>'
             f'<TD ALIGN="RIGHT">{badge_str}</TD>'
             f"</TR>"
         )
 
     body = "".join(rows)
-    return f'<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">{header}{body}</TABLE>>'
+    return f'<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" COLOR="{border_color}">{header}{body}</TABLE>>'
 
 
-def metadata_to_graphviz(metadata: MetaData):
+def metadata_to_graphviz(metadata: MetaData, *, dark: bool = False):
     """Convert reflected MetaData to a graphviz.Digraph object.
+
+    Args:
+        dark: Use dark color scheme (light text on dark background).
+              Default is light mode (dark text on white background).
 
     Raises ImportError if the graphviz package is not installed.
     """
@@ -70,12 +81,27 @@ def metadata_to_graphviz(metadata: MetaData):
             "brew install graphviz (macOS) or apt install graphviz (Linux)."
         )
 
+    if dark:
+        bg_color = "#1e1e1e"
+        text_color = "#d4d4d4"
+        type_color = "#808080"
+        border_color = "#444444"
+        edge_color = "#888888"
+        header_bg = "#3a6ea5"
+    else:
+        bg_color = "white"
+        text_color = "#1a1a1a"
+        type_color = "#888888"
+        border_color = "#cccccc"
+        edge_color = "#666666"
+        header_bg = "#4a86c8"
+
     dot = graphviz.Digraph(
         "ER",
         graph_attr={
             "rankdir": "LR",
             "fontname": "Helvetica",
-            "bgcolor": "transparent",
+            "bgcolor": bg_color,
             "pad": "0.5",
             "nodesep": "0.8",
             "ranksep": "1.2",
@@ -88,14 +114,19 @@ def metadata_to_graphviz(metadata: MetaData):
         edge_attr={
             "fontname": "Helvetica",
             "fontsize": "9",
-            "color": "#666666",
+            "color": edge_color,
             "arrowsize": "0.8",
         },
     )
 
     # Add table nodes
     for table in sorted(metadata.tables.values(), key=lambda t: _full_name(t)):
-        dot.node(_full_name(table), label=_table_label(table))
+        dot.node(
+            _full_name(table),
+            label=_table_label(table, text_color=text_color,
+                               type_color=type_color, border_color=border_color,
+                               header_bg=header_bg),
+        )
 
     # Add foreign key edges
     for table in metadata.tables.values():
@@ -113,13 +144,16 @@ def render_diagram(
     metadata: MetaData,
     output: Path,
     fmt: str = "png",
+    *,
+    dark: bool = False,
 ) -> Path:
     """Render an ER diagram to a file.
 
     fmt: graphviz output format — 'png', 'svg', 'pdf', etc.
+    dark: use dark color scheme.
     Returns the path to the rendered file.
     """
-    dot = metadata_to_graphviz(metadata)
+    dot = metadata_to_graphviz(metadata, dark=dark)
 
     # graphviz renders to output_path + ".png" (appends extension),
     # so we strip the suffix to get the right filename
