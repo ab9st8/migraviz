@@ -69,8 +69,9 @@ from migraviz.translator import metadata_to_dbml
     "x_args",
     multiple=True,
     help=(
-        "Extra -x arguments passed to alembic, in the form section:key=value. "
-        "e.g. -x alembic:tenant:schema_name=tenant_migraviz. "
+        "Extra -x arguments passed to a specific alembic section. "
+        "Format: section=key=value. "
+        "e.g. -x tenant-schema=schema_name=tenant_migraviz. "
         "Only used in ephemeral mode."
     ),
 )
@@ -136,15 +137,15 @@ def _introspect_external(db_url, schemas):
 def _run_ephemeral(alembic_ini, revision, sections, schemas, x_args):
     """Ephemeral mode: spin up postgres, migrate, introspect."""
     # Parse -x args into per-section buckets: {section: [key=value, ...]}
+    # Format: section=key=value (first = separates section from the rest)
     section_x_args: dict[str, list[str]] = {}
     for x_arg in x_args:
-        parts = x_arg.split(":", maxsplit=2)
-        if len(parts) == 3:
-            sec = f"{parts[0]}:{parts[1]}"
-            section_x_args.setdefault(sec, []).append(parts[2])
+        parts = x_arg.split("=", maxsplit=1)
+        if len(parts) == 2 and parts[0] and parts[1]:
+            section_x_args.setdefault(parts[0], []).append(parts[1])
         else:
             click.echo(
-                f"Invalid -x format: {x_arg!r} (expected section:key=value)",
+                f"Invalid -x format: {x_arg!r} (expected section=key=value)",
                 err=True,
             )
             sys.exit(1)

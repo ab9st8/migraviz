@@ -44,9 +44,9 @@ Multi-schema / multi-tenant:
 
 ```bash
 migraviz ./alembic.ini \
-  -s alembic:shared -s alembic:tenant \
+  -s shared-schema -s tenant-schema \
   --schema shared --schema tenant_migraviz \
-  -x alembic:tenant:schema_name=tenant_migraviz
+  -x tenant-schema=schema_name=tenant_migraviz
 ```
 
 ### External DB mode
