@@ -6,15 +6,13 @@ import pytest
 
 
 @pytest.mark.integration
-def test_introspect_returns_tables(alembic_ini: Path):
+def test_introspect_returns_tables(alembic_ini: Path, pg_url: str):
     """Introspecting after migration should return our tables."""
-    from migraviz.db import ephemeral_pg
     from migraviz.introspect import introspect_schema
     from migraviz.migrate import run_migrations
 
-    with ephemeral_pg() as url:
-        run_migrations(alembic_ini, url, revision="head")
-        metadata = introspect_schema(url)
+    run_migrations(alembic_ini, pg_url, revision="head")
+    metadata = introspect_schema(pg_url)
 
     table_names = set(metadata.tables.keys())
     assert "users" in table_names
@@ -23,15 +21,13 @@ def test_introspect_returns_tables(alembic_ini: Path):
 
 
 @pytest.mark.integration
-def test_introspect_columns(alembic_ini: Path):
+def test_introspect_columns(alembic_ini: Path, pg_url: str):
     """Introspected tables should have the right columns."""
-    from migraviz.db import ephemeral_pg
     from migraviz.introspect import introspect_schema
     from migraviz.migrate import run_migrations
 
-    with ephemeral_pg() as url:
-        run_migrations(alembic_ini, url, revision="head")
-        metadata = introspect_schema(url)
+    run_migrations(alembic_ini, pg_url, revision="head")
+    metadata = introspect_schema(pg_url)
 
     users = metadata.tables["users"]
     col_names = {c.name for c in users.columns}
@@ -47,15 +43,13 @@ def test_introspect_columns(alembic_ini: Path):
 
 
 @pytest.mark.integration
-def test_introspect_foreign_keys(alembic_ini: Path):
+def test_introspect_foreign_keys(alembic_ini: Path, pg_url: str):
     """Introspected schema should include foreign key relationships."""
-    from migraviz.db import ephemeral_pg
     from migraviz.introspect import introspect_schema
     from migraviz.migrate import run_migrations
 
-    with ephemeral_pg() as url:
-        run_migrations(alembic_ini, url, revision="head")
-        metadata = introspect_schema(url)
+    run_migrations(alembic_ini, pg_url, revision="head")
+    metadata = introspect_schema(pg_url)
 
     posts = metadata.tables["posts"]
     fk_constraints = list(posts.foreign_key_constraints)
