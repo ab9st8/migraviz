@@ -9,7 +9,7 @@ def metadata_to_dbml(metadata: MetaData) -> str:
     """Convert reflected MetaData to a DBML string."""
     parts: list[str] = []
 
-    for table in sorted(metadata.tables.values(), key=lambda t: t.name):
+    for table in sorted(metadata.tables.values(), key=lambda t: _full_name(t)):
         parts.append(_table_to_dbml(table))
 
     # Collect all foreign keys across tables
@@ -18,8 +18,8 @@ def metadata_to_dbml(metadata: MetaData) -> str:
         for fk_constraint in table.foreign_key_constraints:
             for fk in fk_constraint.elements:
                 refs.append(
-                    f"Ref: {table.name}.{fk.parent.name} > "
-                    f"{fk.column.table.name}.{fk.column.name}"
+                    f"Ref: {_full_name(table)}.{fk.parent.name} > "
+                    f"{_full_name(fk.column.table)}.{fk.column.name}"
                 )
 
     if refs:
@@ -29,9 +29,16 @@ def metadata_to_dbml(metadata: MetaData) -> str:
     return "\n".join(parts) + "\n"
 
 
+def _full_name(table) -> str:
+    """Return schema-qualified name if the table has a schema, otherwise just the name."""
+    if table.schema:
+        return f"{table.schema}.{table.name}"
+    return table.name
+
+
 def _table_to_dbml(table) -> str:
     """Convert a single SA Table to a DBML Table block."""
-    lines = [f"Table {table.name} {{"]
+    lines = [f"Table {_full_name(table)} {{"]
     for col in table.columns:
         lines.append(f"  {_column_to_dbml(col)}")
     lines.append("}")
