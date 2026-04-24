@@ -40,7 +40,15 @@ from migraviz.translator import metadata_to_dbml
     "--output",
     type=click.Path(dir_okay=False, path_type=Path),
     default=None,
-    help="Output file path. Prints to stdout if omitted.",
+    help="Output file path. Prints to stdout if omitted (DBML only).",
+)
+@click.option(
+    "-f",
+    "--format",
+    "fmt",
+    type=click.Choice(["dbml", "png", "svg", "pdf"]),
+    default="dbml",
+    help="Output format (default: dbml). Image formats require graphviz.",
 )
 @click.option(
     "-s",
@@ -80,23 +88,22 @@ def main(
     db_url: str | None,
     revision: str,
     output: Path | None,
+    fmt: str,
     sections: tuple[str, ...],
     schemas: tuple[str, ...],
     x_args: tuple[str, ...],
 ) -> None:
-    """Generate a DBML schema from Alembic migrations.
-
-    Two modes of operation:
+    """Generate a DBML schema or ER diagram from Alembic migrations.
 
     \b
     Ephemeral mode (default):
       migraviz ./alembic.ini [-r revision]
-      Spins up a temporary Postgres, runs migrations, introspects, outputs DBML.
+      Spins up a temporary Postgres, runs migrations, introspects.
 
     \b
     External DB mode:
       migraviz --db-url postgresql://user:pass@host:port/db [--schema ...]
-      Connects to an existing database, introspects, outputs DBML.
+      Connects to an existing database, introspects.
       No migrations are run — the database should already be in the desired state.
     """
     if db_url and alembic_ini:
@@ -105,6 +112,10 @@ def main(
 
     if not db_url and not alembic_ini:
         click.echo("Provide either ALEMBIC_INI or --db-url.", err=True)
+        sys.exit(1)
+
+    if fmt != "dbml" and not output:
+        click.echo(f"--output is required for {fmt} format.", err=True)
         sys.exit(1)
 
     if db_url:
@@ -117,13 +128,23 @@ def main(
         click.echo("No tables found.", err=True)
         sys.exit(1)
 
-    dbml = metadata_to_dbml(metadata)
-
-    if output:
-        output.write_text(dbml)
-        click.echo(f"Written to {output}", err=True)
+    if fmt == "dbml":
+        dbml = metadata_to_dbml(metadata)
+        if output:
+            output.write_text(dbml)
+            click.echo(f"Written to {output}", err=True)
+        else:
+            click.echo(dbml)
     else:
-        click.echo(dbml)
+        from migraviz.renderer import render_diagram
+
+        assert output is not None
+        try:
+            rendered = render_diagram(metadata, output, fmt=fmt)
+            click.echo(f"Rendered to {rendered}", err=True)
+        except ImportError as e:
+            click.echo(str(e), err=True)
+            sys.exit(1)
 
 
 def _introspect_external(db_url, schemas):
