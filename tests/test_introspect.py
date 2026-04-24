@@ -34,11 +34,16 @@ def test_introspect_columns(alembic_ini: Path):
         metadata = introspect_schema(url)
 
     users = metadata.tables["users"]
-    assert "id" in users.columns
-    assert "name" in users.columns
-    assert "email" in users.columns
-    assert users.columns["id"].primary_key is True
-    assert users.columns["name"].nullable is False
+    col_names = {c.name for c in users.columns}
+    assert "id" in col_names
+    assert "name" in col_names
+    assert "email" in col_names
+
+    id_col = users.c.id
+    assert id_col.primary_key is True
+
+    name_col = users.c.name
+    assert name_col.nullable is False
 
 
 @pytest.mark.integration
@@ -52,8 +57,10 @@ def test_introspect_foreign_keys(alembic_ini: Path):
         run_migrations(alembic_ini, url, revision="head")
         metadata = introspect_schema(url)
 
-    assert len(metadata.foreign_keys) >= 1
-    fk = metadata.foreign_keys[0]
-    assert fk.constrained_table == "posts"
-    assert fk.referred_table == "users"
-    assert "author_id" in fk.constrained_columns
+    posts = metadata.tables["posts"]
+    fk_constraints = list(posts.foreign_key_constraints)
+    assert len(fk_constraints) >= 1
+
+    fk = fk_constraints[0]
+    assert fk.referred_table.name == "users"
+    assert "author_id" in {c.name for c in fk.columns}

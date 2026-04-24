@@ -6,13 +6,13 @@ from sqlalchemy import (
     Integer,
     MetaData,
     String,
-    Table,
     Boolean,
+    Table,
 )
 
 
 def _make_simple_metadata() -> MetaData:
-    """Build a minimal MetaData with one table for testing."""
+    """Build a minimal MetaData with one table."""
     metadata = MetaData()
     Table(
         "users",
@@ -48,25 +48,22 @@ def test_single_table_produces_valid_dbml():
     """A single table should translate to a DBML Table block."""
     from migraviz.translator import metadata_to_dbml
 
-    metadata = _make_simple_metadata()
-    dbml = metadata_to_dbml(metadata)
+    dbml = metadata_to_dbml(_make_simple_metadata())
 
     assert "Table users {" in dbml
-    assert "id integer [pk]" in dbml
-    assert "name varchar(100) [not null]" in dbml
-    assert "email varchar(255)" in dbml
+    assert "id INTEGER [pk]" in dbml
+    assert "name VARCHAR(100) [not null]" in dbml
+    assert "email VARCHAR(255)" in dbml
 
 
 def test_foreign_key_produces_ref():
     """Foreign keys should produce DBML Ref lines."""
     from migraviz.translator import metadata_to_dbml
 
-    metadata = _make_metadata_with_fk()
-    dbml = metadata_to_dbml(metadata)
+    dbml = metadata_to_dbml(_make_metadata_with_fk())
 
     assert "Table users {" in dbml
     assert "Table posts {" in dbml
-    # DBML ref syntax: Ref: posts.author_id > users.id
     assert "Ref: posts.author_id > users.id" in dbml
 
 
@@ -74,9 +71,7 @@ def test_primary_key_annotation():
     """Primary key columns should have [pk] annotation."""
     from migraviz.translator import metadata_to_dbml
 
-    metadata = _make_simple_metadata()
-    dbml = metadata_to_dbml(metadata)
-
+    dbml = metadata_to_dbml(_make_simple_metadata())
     assert "[pk]" in dbml
 
 
@@ -84,8 +79,16 @@ def test_not_null_annotation():
     """Non-nullable columns should have [not null] annotation."""
     from migraviz.translator import metadata_to_dbml
 
-    metadata = _make_metadata_with_fk()
-    dbml = metadata_to_dbml(metadata)
+    dbml = metadata_to_dbml(_make_metadata_with_fk())
+    assert "title VARCHAR(200) [not null]" in dbml
 
-    # title is not null
-    assert "title varchar(200) [not null]" in dbml
+
+def test_nullable_column_has_no_annotation():
+    """Nullable columns without pk should have no brackets."""
+    from migraviz.translator import metadata_to_dbml
+
+    dbml = metadata_to_dbml(_make_simple_metadata())
+    lines = [l.strip() for l in dbml.splitlines()]
+    email_lines = [l for l in lines if l.startswith("email")]
+    assert len(email_lines) == 1
+    assert "[" not in email_lines[0]
