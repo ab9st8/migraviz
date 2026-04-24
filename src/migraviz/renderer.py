@@ -105,7 +105,6 @@ def metadata_to_graphviz(metadata: MetaData, *, dark: bool = False):
             "pad": "0.5",
             "nodesep": "0.8",
             "ranksep": "1.2",
-            "splines": "ortho",
         },
         node_attr={
             "shape": "plaintext",
